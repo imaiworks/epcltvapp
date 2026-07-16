@@ -150,7 +150,7 @@
 
     <string name="pref_key_keyword_groups" translatable="false">KEY_KEYWORD_GROUPS</string>
     <string name="keyword_groups_title">Keyword Groups</string>
-    <string name="keyword_groups_summary">One group per line: "GroupName: keyword1 keyword2 ..."\nExample: "Baseball: Giants Tigers Dragons"\nAdds a row below Live TV listing only channels currently airing a program whose title, description, or genre name (e.g. Anime, Drama) matches one of the keywords.</string>
+    <string name="keyword_groups_summary">One group per line: "GroupName: keyword1 keyword2 ..."\nExample: "Baseball: Giants Tigers Dragons"\nPrefix a keyword with "-" to exclude it.\nExample: "Sports: Sports -Baseball"\nAdds a row below Live TV listing only channels currently airing a program whose title, description, or genre name (e.g. Anime, Drama) matches one of the keywords and none of the excluded keywords.</string>
 
     <!-- History display -->
     <string name="pref_key_clear_history" translatable="false">pref_key_clear_history_action</string>

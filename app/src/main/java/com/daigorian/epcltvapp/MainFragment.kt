@@ -562,7 +562,9 @@ class MainFragment : BrowseSupportFragment() {
                                 // ARIBジャンルコード（genre1/subGenre1）から得られるジャンル名でしか拾えないため。
                                 val genreText = AribGenre.getGenreText(program.genre1, program.subGenre1)
                                 val matchTarget = "${program.name}\n${program.description.orEmpty()}\n$genreText"
-                                if (group.keywords.any { matchTarget.contains(it, ignoreCase = true) }) {
+                                val isMatched = group.keywords.any { matchTarget.contains(it, ignoreCase = true) } &&
+                                        group.excludeKeywords.none { matchTarget.contains(it, ignoreCase = true) }
+                                if (isMatched) {
                                     channelsById[schedule.channel.id]?.also { it.currentProgramName = program.name }
                                 } else {
                                     null

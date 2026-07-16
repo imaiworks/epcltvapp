@@ -81,7 +81,7 @@
     <string name="history_cleared">検索履歴をクリアしました</string>
 
     <string name="keyword_groups_title">キーワードグループ</string>
-    <string name="keyword_groups_summary">1行に1グループ。「グループ名: キーワード1 キーワード2」の形式で入力してください。\n例:「プロ野球: 巨人 阪神 中日 DeNA 広島カープ」\n番組タイトルと概要のどちらかにキーワードが含まれるチャンネルを、「現在放送中」列のすぐ下に一覧する列が追加されます。</string>
+    <string name="keyword_groups_summary">1行に1グループ。「グループ名: キーワード1 キーワード2」の形式で入力してください。\n例:「プロ野球: 巨人 阪神 中日 DeNA 広島カープ」\n番組タイトル・概要・ジャンル名（アニメ、ドラマなど）のいずれかにキーワードが含まれるチャンネルを、「現在放送中」列のすぐ下に一覧する列が追加されます。</string>
 
     <string name="use_custom_base_url">API Base URLを編集する</string>
     <string name="customize_base_url">API Base URL</string>

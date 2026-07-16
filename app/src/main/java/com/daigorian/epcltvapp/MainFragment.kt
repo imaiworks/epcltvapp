@@ -557,9 +557,11 @@ class MainFragment : BrowseSupportFragment() {
                         groups.forEachIndexed { index, group ->
                             val matchedChannels = schedules.mapNotNull { schedule ->
                                 val program = schedule.programs.firstOrNull() ?: return@mapNotNull null
-                                // タイトルだけでなく概要（description）も検索対象にする。
-                                // ジャンルや対戦カードなどがタイトルに出ず概要文にだけ書かれている番組を拾うため。
-                                val matchTarget = "${program.name}\n${program.description.orEmpty()}"
+                                // タイトル・概要（description）に加えてジャンル名も検索対象にする。
+                                // 「アニメ」等のジャンル名はタイトルや概要の本文には出てこないことが多く、
+                                // ARIBジャンルコード（genre1/subGenre1）から得られるジャンル名でしか拾えないため。
+                                val genreText = AribGenre.getGenreText(program.genre1, program.subGenre1)
+                                val matchTarget = "${program.name}\n${program.description.orEmpty()}\n$genreText"
                                 if (group.keywords.any { matchTarget.contains(it, ignoreCase = true) }) {
                                     channelsById[schedule.channel.id]?.also { it.currentProgramName = program.name }
                                 } else {

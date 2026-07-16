@@ -97,6 +97,12 @@ class MainFragment : BrowseSupportFragment() {
                 Log.d(TAG, "prefChanged: $key → syncOptionalSettingsCards")
                 syncOptionalSettingsCards()
             }
+            getString(R.string.pref_key_keyword_groups) -> {
+                Log.d(TAG, "prefChanged: keyword_groups → setSelectedPosition(0) before deleteCategory")
+                setSelectedPosition(0, false)
+                mMainMenuAdapter.deleteCategory(Category.KEYWORD_GROUPS)
+                updateRows()
+            }
         }
     }
 
@@ -527,6 +533,80 @@ class MainFragment : BrowseSupportFragment() {
             }
         })
 
+        updateKeywordGroupRows()
+
+    }
+
+    /** キーワードグループ設定をパースし、グループごとに「現在放送中」の列を作る／更新する */
+    private fun updateKeywordGroupRows() {
+        val api = EpgStationV2.api ?: return
+        val prefString = PreferenceManager.getDefaultSharedPreferences(context)
+            .getString(getString(R.string.pref_key_keyword_groups), "") ?: ""
+        val groups = KeywordGroup.parse(prefString)
+        if (groups.isEmpty()) return
+
+        api.getChannels().enqueue(object : Callback<List<ChannelItem>> {
+            override fun onResponse(call: Call<List<ChannelItem>>, response: Response<List<ChannelItem>>) {
+                val channelsById = response.body()
+                    ?.filter { ChannelItem.isAudioVideoService(it.type) }
+                    ?.associateBy { it.id } ?: return
+
+                api.getScheduleOnAir().enqueue(object : Callback<List<Schedule>> {
+                    override fun onResponse(call: Call<List<Schedule>>, response: Response<List<Schedule>>) {
+                        val schedules = response.body() ?: return
+                        groups.forEachIndexed { index, group ->
+                            val matchedChannels = schedules.mapNotNull { schedule ->
+                                val programName = schedule.programs.firstOrNull()?.name ?: return@mapNotNull null
+                                if (group.keywords.any { programName.contains(it, ignoreCase = true) }) {
+                                    channelsById[schedule.channel.id]?.also { it.currentProgramName = programName }
+                                } else {
+                                    null
+                                }
+                            }
+                            setKeywordGroupRow(index, group.name, matchedChannels)
+                        }
+                    }
+                    override fun onFailure(call: Call<List<Schedule>>, t: Throwable) {
+                        Log.d(TAG, "updateKeywordGroupRows() getScheduleOnAir API Failure")
+                    }
+                })
+            }
+            override fun onFailure(call: Call<List<ChannelItem>>, t: Throwable) {
+                Log.d(TAG, "updateKeywordGroupRows() getChannels API Failure")
+            }
+        })
+    }
+
+    /** キーワードグループ1つ分の列を作る／中身のチャンネルを差し替える。マッチが0件でも列は残す */
+    private fun setKeywordGroupRow(indexInCategory: Int, title: String, channels: List<ChannelItem>) {
+        val headerId = Category.KEYWORD_GROUPS.ordinal.toLong() * 10000 + indexInCategory
+        val currentListRow = mMainMenuAdapter.getListRowByHeaderId(headerId)
+        val listRowAdapter = if (currentListRow == null) {
+            ArrayObjectAdapter(mCardPresenter).also { adapter ->
+                val header = HeaderItem(headerId, title)
+                mMainMenuAdapter.addToCategory(Category.KEYWORD_GROUPS, ListRow(header, adapter))
+            }
+        } else {
+            currentListRow.adapter as ArrayObjectAdapter
+        }
+
+        //既存のリストにあって、レスポンスにないアイテムの削除
+        var horizontalIndex = 0
+        while (horizontalIndex < listRowAdapter.size()) {
+            val stillPresent = channels.any { listRowAdapter.get(horizontalIndex) == it }
+            if (!stillPresent) {
+                listRowAdapter.removeItems(horizontalIndex, 1)
+            } else {
+                horizontalIndex += 1
+            }
+        }
+
+        //レスポンスにあって、既存のリストにないアイテムの追加
+        channels.forEachIndexed { index, channel ->
+            if (listRowAdapter.indexOf(channel) == -1) {
+                listRowAdapter.add(index, channel)
+            }
+        }
     }
 
     private fun loadRows() {
@@ -617,7 +697,7 @@ class MainFragment : BrowseSupportFragment() {
 
     /** 設定行を保持したまま、コンテンツ行だけをクリアして再読み込みする */
     private fun reloadContentRows() {
-        listOf(Category.LIVE_CHANNELS, Category.ON_RECORDING, Category.RECENTLY_RECORDED, Category.SEARCH_HISTORY, Category.RECORDED_BY_RULES)
+        listOf(Category.LIVE_CHANNELS, Category.KEYWORD_GROUPS, Category.ON_RECORDING, Category.RECENTLY_RECORDED, Category.SEARCH_HISTORY, Category.RECORDED_BY_RULES)
             .forEach { mMainMenuAdapter.deleteCategory(it) }
         updateRows()
     }
@@ -644,6 +724,9 @@ class MainFragment : BrowseSupportFragment() {
                 Toast.makeText(context!!, getString(R.string.connect_epgstation_failed), Toast.LENGTH_LONG).show()
             }
         })
+
+        //番組名が変わればキーワードグループのマッチも変わりうるので、あわせて再計算する
+        updateKeywordGroupRows()
     }
 
     /** USBデバッグなしでもクラッシュ内容を確認できるよう、前回起動時のクラッシュログがあれば表示する */
@@ -966,6 +1049,7 @@ class MainFragment : BrowseSupportFragment() {
     enum class Category {
         //メニューはこの順番で並びます。
         LIVE_CHANNELS,
+        KEYWORD_GROUPS,
         PROGRAM_NAME_REFRESH,
         ON_RECORDING,
         RECENTLY_RECORDED,
@@ -1002,6 +1086,10 @@ class MainFragment : BrowseSupportFragment() {
                         Category.LIVE_CHANNELS -> {
                             //一行しかないのでセクション行は入れない。
                             //ライブ視聴は一番上のグループなので区切り線は入れない。
+                        }
+                        Category.KEYWORD_GROUPS -> {
+                            //ライブ視聴のすぐ下に並べたいグループなので区切り線は入れない。
+                            //グループごとに個別の行になるが、この分岐は最初の1行目の時だけ呼ばれる。
                         }
                         Category.PROGRAM_NAME_REFRESH -> {
                             //一行しかないのでセクション行は入れない。
@@ -1326,12 +1414,22 @@ class MainFragment : BrowseSupportFragment() {
         )
     }
 
+    // headerId から表示すべきアイコンを解決する。KEYWORD_GROUPS はグループ数が可変で
+    // headerId を固定マップに列挙できないため、カテゴリの範囲判定でフォールバックする。
+    private fun sidebarIconFor(headerId: Long): Int? {
+        sidebarIconMap[headerId]?.let { return it }
+        if (headerId >= 0 && (headerId / 10000).toInt() == Category.KEYWORD_GROUPS.ordinal) {
+            return R.drawable.ic_sidebar_live
+        }
+        return null
+    }
+
     private open inner class IconRowHeaderPresenter : RowHeaderPresenter() {
         override fun onBindViewHolder(viewHolder: Presenter.ViewHolder, item: Any?) {
             super.onBindViewHolder(viewHolder, item)
             val row = item as? Row ?: return
             val headerId = row.headerItem?.id ?: return
-            val iconResId = sidebarIconMap[headerId]
+            val iconResId = sidebarIconFor(headerId)
             val root = viewHolder.view
 
             // lb_row_header.xml の構造を ID に依存せず子ビューの型で解決する。

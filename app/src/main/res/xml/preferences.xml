@@ -123,6 +123,19 @@
 
         </PreferenceCategory>
 
+        <PreferenceCategory
+            app:title="@string/pref_category_keyword_groups_display">
+
+            <EditTextPreference
+                app:title=       "@string/keyword_groups_title"
+                app:key=         "@string/pref_key_keyword_groups"
+                app:defaultValue=""
+                app:dialogLayout="@xml/preference_multiline_edittext"
+                app:summary=     "@string/keyword_groups_summary"
+                />
+
+        </PreferenceCategory>
+
     </PreferenceScreen>
 
 </PreferenceScreen>

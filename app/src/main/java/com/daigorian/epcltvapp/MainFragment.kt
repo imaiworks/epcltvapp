@@ -556,9 +556,12 @@ class MainFragment : BrowseSupportFragment() {
                         val schedules = response.body() ?: return
                         groups.forEachIndexed { index, group ->
                             val matchedChannels = schedules.mapNotNull { schedule ->
-                                val programName = schedule.programs.firstOrNull()?.name ?: return@mapNotNull null
-                                if (group.keywords.any { programName.contains(it, ignoreCase = true) }) {
-                                    channelsById[schedule.channel.id]?.also { it.currentProgramName = programName }
+                                val program = schedule.programs.firstOrNull() ?: return@mapNotNull null
+                                // タイトルだけでなく概要（description）も検索対象にする。
+                                // ジャンルや対戦カードなどがタイトルに出ず概要文にだけ書かれている番組を拾うため。
+                                val matchTarget = "${program.name}\n${program.description.orEmpty()}"
+                                if (group.keywords.any { matchTarget.contains(it, ignoreCase = true) }) {
+                                    channelsById[schedule.channel.id]?.also { it.currentProgramName = program.name }
                                 } else {
                                     null
                                 }

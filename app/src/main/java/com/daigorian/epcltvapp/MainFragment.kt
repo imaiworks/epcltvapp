@@ -56,6 +56,14 @@ class MainFragment : BrowseSupportFragment() {
     private val mMainMenuListRowPresenter = ListRowPresenter()
     private val mMainMenuAdapter = MainMenuAdapter(mMainMenuListRowPresenter)
 
+    /** ライブ視聴の番組名を1分ごとに自動更新するRunnable（issue #36） */
+    private val mProgramNameAutoRefreshRunnable = object : Runnable {
+        override fun run() {
+            refreshLiveProgramNames()
+            mHandler.postDelayed(this, PROGRAM_NAME_AUTO_REFRESH_INTERVAL_MS)
+        }
+    }
+
     private val mDisplayPrefChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
         Log.d(TAG, "prefChanged key=$key isResumed=$isResumed adapterSize=${mMainMenuAdapter.size()} selectedPos=$selectedPosition")
         when (key) {
@@ -177,11 +185,23 @@ class MainFragment : BrowseSupportFragment() {
                 updateRows()
             }
         }
+        startProgramNameAutoRefresh()
     }
 
     override fun onPause() {
         super.onPause()
+        stopProgramNameAutoRefresh()
         Log.d(TAG, "onPause: adapterSize=${mMainMenuAdapter.size()} selectedPos=$selectedPosition")
+    }
+
+    /** ライブ視聴の番組名自動更新タイマーを開始する。表示中のみ動かすため画面を離れたら止める（issue #36） */
+    private fun startProgramNameAutoRefresh() {
+        mHandler.removeCallbacks(mProgramNameAutoRefreshRunnable)
+        mHandler.postDelayed(mProgramNameAutoRefreshRunnable, PROGRAM_NAME_AUTO_REFRESH_INTERVAL_MS)
+    }
+
+    private fun stopProgramNameAutoRefresh() {
+        mHandler.removeCallbacks(mProgramNameAutoRefreshRunnable)
     }
 
     override fun onStart() {
@@ -373,6 +393,9 @@ class MainFragment : BrowseSupportFragment() {
                                     listRowAdapter.add(index, it)
                                 }
                             }
+
+                            // チャンネル一覧の取得だけでは番組名(currentProgramName)は入らないため、直後に取得する
+                            refreshLiveProgramNames()
                         }
                     }
                 }
@@ -625,16 +648,6 @@ class MainFragment : BrowseSupportFragment() {
         //コンテンツをロード。
         updateRows()
 
-        //"番組名更新"　の単体アクションが乗る行
-        val programRefreshHeader = HeaderItem(-Category.PROGRAM_NAME_REFRESH.ordinal.toLong(), getString(R.string.refresh_program_names))
-        val programRefreshAdapter = ArrayObjectAdapter(SettingsCardPresenter())
-        programRefreshAdapter.add(SettingsCardPresenter.Item(
-            R.drawable.ic_settings_reload,
-            getString(R.string.refresh_program_names),
-            SettingsCardPresenter.Item.Action.REFRESH_PROGRAM_NAMES
-        ))
-        mMainMenuAdapter.addToCategory(Category.PROGRAM_NAME_REFRESH, ListRow(programRefreshHeader, programRefreshAdapter))
-
         //"設定"　のボタンが乗る行
         val gridHeader = HeaderItem(-Category.SETTINGS.ordinal.toLong(), getString(R.string.settings))
         val gridPresenter = SettingsCardPresenter()
@@ -710,16 +723,18 @@ class MainFragment : BrowseSupportFragment() {
         updateRows()
     }
 
-    /** 「番組名更新」ボタン押下時に、現在放送中の番組名だけをまとめて取り直してカードに反映する */
+    /** 現在放送中の番組名だけをまとめて取り直してカードに反映する（1分ごとの自動更新、issue #36） */
     private fun refreshLiveProgramNames() {
         val headerId = Category.LIVE_CHANNELS.ordinal.toLong()*10000
-        val adapter = (mMainMenuAdapter.getListRowByHeaderId(headerId)?.adapter as? ArrayObjectAdapter) ?: return
+        if (mMainMenuAdapter.getListRowByHeaderId(headerId) == null) return
 
         EpgStationV2.api?.getScheduleOnAir()?.enqueue(object : Callback<List<Schedule>> {
             override fun onResponse(call: Call<List<Schedule>>, response: Response<List<Schedule>>) {
                 val programByChannelId = response.body()
                     ?.associate { it.channel.id to it.programs.firstOrNull()?.name }
                     ?: return
+                // レスポンス到達までの間に行のアダプタが再生成されている可能性があるため、反映直前に取り直す
+                val adapter = (mMainMenuAdapter.getListRowByHeaderId(headerId)?.adapter as? ArrayObjectAdapter) ?: return
                 for (i in 0 until adapter.size()) {
                     (adapter.get(i) as? ChannelItem)?.let { it.currentProgramName = programByChannelId[it.id] }
                 }
@@ -729,7 +744,6 @@ class MainFragment : BrowseSupportFragment() {
             }
             override fun onFailure(call: Call<List<Schedule>>, t: Throwable) {
                 Log.d(TAG,"refreshLiveProgramNames() getScheduleOnAir API Failure")
-                Toast.makeText(context!!, getString(R.string.connect_epgstation_failed), Toast.LENGTH_LONG).show()
             }
         })
 
@@ -844,9 +858,6 @@ class MainFragment : BrowseSupportFragment() {
                         }
                         SettingsCardPresenter.Item.Action.RELOAD -> {
                             reloadContentRows()
-                        }
-                        SettingsCardPresenter.Item.Action.REFRESH_PROGRAM_NAMES -> {
-                            refreshLiveProgramNames()
                         }
                         SettingsCardPresenter.Item.Action.WAKE_ON_LAN -> {
                             val mac = PreferenceManager.getDefaultSharedPreferences(requireContext())
@@ -1058,7 +1069,6 @@ class MainFragment : BrowseSupportFragment() {
         //メニューはこの順番で並びます。
         LIVE_CHANNELS,
         KEYWORD_GROUPS,
-        PROGRAM_NAME_REFRESH,
         ON_RECORDING,
         RECENTLY_RECORDED,
         SEARCH_HISTORY,
@@ -1098,10 +1108,6 @@ class MainFragment : BrowseSupportFragment() {
                         Category.KEYWORD_GROUPS -> {
                             //ライブ視聴のすぐ下に並べたいグループなので区切り線は入れない。
                             //グループごとに個別の行になるが、この分岐は最初の1行目の時だけ呼ばれる。
-                        }
-                        Category.PROGRAM_NAME_REFRESH -> {
-                            //一行しかないのでセクション行は入れない。
-                            //ライブ視聴の付属アクションなので区切り線は入れない。
                         }
                         Category.ON_RECORDING -> {
                             //一行しかないのでセクション行は入れない。
@@ -1413,7 +1419,6 @@ class MainFragment : BrowseSupportFragment() {
     private val sidebarIconMap: Map<Long, Int> by lazy {
         mapOf(
             Category.LIVE_CHANNELS.ordinal.toLong() * 10000 to R.drawable.ic_sidebar_live,
-            -Category.PROGRAM_NAME_REFRESH.ordinal.toLong() to R.drawable.ic_settings_reload,
             Category.ON_RECORDING.ordinal.toLong() * 10000 to R.drawable.ic_sidebar_rec,
             Category.RECENTLY_RECORDED.ordinal.toLong() * 10000 to R.drawable.ic_sidebar_clock,
             -Category.SEARCH_HISTORY.ordinal.toLong() to R.drawable.ic_sidebar_search,
@@ -1484,6 +1489,9 @@ class MainFragment : BrowseSupportFragment() {
         private const val BACKGROUND_UPDATE_DELAY = 300
         // 設定行の固定カード数（接続設定・プレイヤー設定・表示設定・再読み込み）
         private const val FIXED_SETTINGS_CARD_COUNT = 4
+
+        /** ライブ視聴の番組名自動更新間隔（issue #36。3分未満の短い番組の取りこぼしを避けるため1分間隔） */
+        private const val PROGRAM_NAME_AUTO_REFRESH_INTERVAL_MS = 60 * 1000L
     }
 
 

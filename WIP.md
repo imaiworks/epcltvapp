@@ -9,17 +9,23 @@ upstream/master に以下2つの新機能が追加されているのを発見し
 - `cf9f2c2` 番組名を1分ごとに自動更新
 - `3fdfedc` ライブ視聴カードにチャンネルロゴを表示 (#35)(#38)
 
+## upstream実装のメモ（参考）
+- `GET /api/channels/{channelId}/logo`。ロゴが無いチャンネルは404。
+- `ChannelItem.hasLogoData: Boolean` で事前判定し、無駄なリクエストを避けている。
+- `OriginalCardPresenter` の `is ChannelItem ->` で `hasLogoData` が true の時だけ
+  `authForGlide` パターンでGlide読み込み、失敗時は `mDefaultCardImage` にフォールバック。
+- スケールは `centerCrop()` ではなく `fitCenter()`（ロゴは透過/白背景が多いため）。
+
 ## 注意点
 このフォークは `MainFragment.kt` / `ChannelItem.kt` / `OriginalCardPresenter.kt` に
 キーワードグループ機能などの独自変更が入っているため、`git merge upstream/master` で
-コンフリクトが発生する可能性が高い。
+コンフリクトが発生した（`MainFragment.kt` / `SettingsCardPresenter.kt` / `WIP.md`）。
 
 ## 完了済み
-- (未着手)
+- [x] `git merge upstream/master` 実行、コンフリクト解消中
 
 ## 残タスク
-1. `git merge upstream/master` 実行
-2. コンフリクト解消（発生した場合）
-3. ビルド確認 (`assembleDebug`)
-4. ユーザーによる実機動作確認（番組名自動更新・チャンネルロゴ表示）
-5. PR作成（origin: imaiworks/epcltvapp へ）
+1. コンフリクト解消（`MainFragment.kt` / `SettingsCardPresenter.kt`）
+2. ビルド確認 (`assembleDebug`)
+3. ユーザーによる実機動作確認（番組名自動更新・チャンネルロゴ表示・キーワードグループ機能に影響がないか）
+4. PR作成（origin: imaiworks/epcltvapp へ）

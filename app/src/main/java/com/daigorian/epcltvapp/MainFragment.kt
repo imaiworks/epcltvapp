@@ -543,6 +543,7 @@ class MainFragment : BrowseSupportFragment() {
         val prefString = PreferenceManager.getDefaultSharedPreferences(context)
             .getString(getString(R.string.pref_key_keyword_groups), "") ?: ""
         val groups = KeywordGroup.parse(prefString)
+        Log.d(TAG, "updateKeywordGroupRows() parsed groups=$groups")
         if (groups.isEmpty()) return
 
         api.getChannels().enqueue(object : Callback<List<ChannelItem>> {
